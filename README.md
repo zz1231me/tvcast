@@ -53,10 +53,13 @@ python3 tvcast.py
 
 ```bash
 pip install flask
-python3 tvcast_web.py            # 기본 포트 8888
+python3 tvcast.py web            # 또는  python3 tvcast_web.py
 # 폰 브라우저에서  http://<이 기기 IP>:8888  접속
 #   (이 기기 IP 확인:  hostname -I)
 ```
+
+**포트 변경**은 `config.json` 의 `settings.web_port` 를 바꾸면 됩니다 (기본 8888).
+일시적으로는 `TVCAST_PORT=9000 python3 tvcast.py web` 처럼 환경변수로도 가능 (환경변수가 우선).
 
 - 즐겨찾기 영상 탭 → 즉시 재생 / 정지 / 상태
 - 볼륨 슬라이더 (드래그하면 기본 볼륨 저장 + 재생 중이면 바로 적용)
@@ -92,6 +95,7 @@ sudo systemctl enable --now tvcast-web      # 부팅 시 자동 실행
 | `device_ip` | 이름이 비어있으면 이 IP 로 연결 |
 | `settings.catt_path` | catt 실행파일 절대경로 (cron 안전을 위해 권장) |
 | `settings.volume` | (선택) 기본 볼륨 `0~100`. 재생 시 자동 적용. 없으면 TV 볼륨 그대로 |
+| `settings.web_port` | 웹 리모컨 포트 (기본 `8888`). `TVCAST_PORT` 환경변수가 있으면 그게 우선 |
 | `settings.pre_stop_wait` | 재생 전 stop 후 대기 초 |
 | `settings.command_timeout` | catt 명령 제한 시간(초) |
 | `settings.log_path` | (선택) 동작 로그 파일 경로. 기본 `tvcast.log` |

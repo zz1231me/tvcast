@@ -530,8 +530,29 @@ load();
 </html>"""
 
 
-if __name__ == "__main__":
-    port = int(os.environ.get("TVCAST_PORT", "8888"))
-    print(f"📺 TV Cast 웹 리모컨 → http://0.0.0.0:{port}")
+def resolve_port(cfg):
+    """포트 결정 우선순위: 환경변수 TVCAST_PORT > config settings.web_port > 8888"""
+    env = os.environ.get("TVCAST_PORT", "")
+    if env.isdigit():
+        port = int(env)
+    else:
+        try:
+            port = int(tv.get_setting(cfg, "web_port", 8888))
+        except (TypeError, ValueError):
+            port = 8888
+    return port if 1 <= port <= 65535 else 8888
+
+
+def run():
+    """웹 서버 실행 (python3 tvcast_web.py 또는 python3 tvcast.py web 에서 호출)"""
+    cfg = load()
+    port = resolve_port(cfg)
+    host = str(tv.get_setting(cfg, "web_host", "0.0.0.0")).strip() or "0.0.0.0"
+    print(f"📺 TV Cast 웹 리모컨 → http://{host}:{port}")
     print("   같은 WiFi 의 폰/PC 브라우저에서 'http://<이 기기 IP>:%d' 로 접속하세요." % port)
-    app.run(host="0.0.0.0", port=port, threaded=True)
+    print("   (포트 변경: config.json 의 settings.web_port, 또는 TVCAST_PORT 환경변수)")
+    app.run(host=host, port=port, threaded=True)
+
+
+if __name__ == "__main__":
+    run()

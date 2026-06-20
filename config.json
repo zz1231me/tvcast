@@ -5,6 +5,7 @@
   "settings": {
     "catt_path": "/home/pi/.local/bin/catt",
     "volume": null,
+    "web_port": 8888,
     "pre_stop_wait": 3,
     "command_timeout": 60
   },

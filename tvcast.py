@@ -13,6 +13,7 @@ TV Cast 컨트롤러
   python3 tvcast.py status     # 상태 확인
   python3 tvcast.py scan       # 기기 검색 후 config 업데이트
   python3 tvcast.py sync-cron  # config 의 켜진 예약을 crontab 에 동기화
+  python3 tvcast.py web        # 웹 리모컨 서버 실행 (flask 필요)
 
 사전 준비:
   pip install catt          # 필수 (캐스팅 엔진)
@@ -1087,6 +1088,9 @@ def main():
             set_catt_path(cfg)
         elif action == "sync-cron":
             report_cron(cfg)
+        elif action == "web":
+            import tvcast_web  # flask 는 웹 실행 시에만 필요
+            tvcast_web.run()
         else:
             error(f"알 수 없는 명령: {action}")
         return
