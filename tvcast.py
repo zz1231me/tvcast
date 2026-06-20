@@ -26,6 +26,7 @@ import re
 import shlex
 import subprocess
 import sys
+import tempfile
 import time
 from datetime import datetime
 
@@ -199,11 +200,26 @@ def load_config():
 
 
 def save_config(cfg):
-    """변경된 설정을 config.json 에 다시 저장 (키 순서·_help 유지)"""
+    """
+    변경된 설정을 config.json 에 저장 (키 순서 유지).
+    임시 파일에 쓴 뒤 os.replace 로 원자적 교체 → 동시 쓰기(웹 멀티스레드)나
+    중간 크래시에도 config.json 이 깨지지 않는다. (고유 임시파일명으로 충돌 방지)
+    """
     try:
-        with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-            json.dump(cfg, f, ensure_ascii=False, indent=2)
-            f.write("\n")
+        # 대상과 같은 디렉터리에 임시파일 → 같은 파일시스템이라 os.replace 가 원자적
+        fd, tmp = tempfile.mkstemp(dir=os.path.dirname(CONFIG_PATH) or ".",
+                                   prefix=".config-", suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump(cfg, f, ensure_ascii=False, indent=2)
+                f.write("\n")
+            os.replace(tmp, CONFIG_PATH)  # 원자적 교체
+        except OSError:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
         return True
     except OSError as e:
         error(f"config.json 저장 실패: {e}")

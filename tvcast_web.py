@@ -66,6 +66,12 @@ def body():
     return request.get_json(force=True, silent=True) or {}
 
 
+def device_ok(cfg):
+    """기기(name 또는 ip)가 설정돼 있는지. 없으면 catt 호출이 sys.exit 하므로 미리 막는다."""
+    return bool(str(cfg.get("device_name", "")).strip()
+                or str(cfg.get("device_ip", "")).strip())
+
+
 # ---------- 상태 / 재생 ----------
 
 @app.get("/api/state")
@@ -77,6 +83,8 @@ def api_state():
 def api_play():
     d = body()
     cfg = load()
+    if not device_ok(cfg):
+        return jsonify(ok=False, error="먼저 ⚙️ 설정에서 기기를 선택하세요."), 400
     key = str(d.get("video", ""))
     raw = d.get("volume")
     vol = tv.parse_volume(raw) if raw not in (None, "") else None
@@ -86,13 +94,18 @@ def api_play():
 
 @app.post("/api/stop")
 def api_stop():
-    tv.stop_video(load())
+    cfg = load()
+    if not device_ok(cfg):
+        return jsonify(ok=False, error="먼저 기기를 선택하세요."), 400
+    tv.stop_video(cfg)
     return jsonify(ok=True)
 
 
 @app.get("/api/status")
 def api_status():
     cfg = load()
+    if not device_ok(cfg):
+        return jsonify(ok=False, error="먼저 기기를 선택하세요."), 400
     ok, out = tv.run_catt(cfg, ["status"],
                           timeout=tv.get_setting(cfg, "command_timeout", 60))
     return jsonify(ok=ok, text=out or "(상태 정보 없음)")
@@ -112,7 +125,8 @@ def api_volume():
         if v is None:
             return jsonify(ok=False, error="0~100 사이 숫자가 필요합니다."), 400
         cfg.setdefault("settings", {})["volume"] = v
-        tv.run_catt(cfg, ["volume", str(v)], quiet=True)  # 재생 중이면 즉시 반영
+        if device_ok(cfg):  # 기기 있을 때만 즉시 반영 (없으면 저장만)
+            tv.run_catt(cfg, ["volume", str(v)], quiet=True)
     tv.save_config(cfg)
     return jsonify(ok=True)
 
