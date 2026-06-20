@@ -1,0 +1,15 @@
+# Claude Code 로컬 설정
+.claude/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# 런타임 로그 (동작 기록)
+tvcast.log
+
+# OS
+.DS_Store
