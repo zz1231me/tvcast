@@ -1,7 +1,18 @@
 # TV Cast 컨트롤러
 
-라즈베리파이(또는 PC)에서 `catt` 로 Chromecast/스마트TV 에 YouTube 영상을 캐스팅하고,
+`catt` 로 Chromecast/스마트TV 에 YouTube 영상을 캐스팅하고,
 시간 예약(cron)으로 자동 재생/종료까지 관리하는 도구입니다.
+
+## 지원 환경
+
+| 환경 | 재생·볼륨·메뉴 | 자동 예약(cron) |
+|------|:--:|:--:|
+| 리눅스 (라즈베리파이OS · 우분투 · 데비안 · 페도라 등) | ✅ | ✅ |
+| macOS | ✅ | ✅ |
+| Windows | ✅ | ❌ (cron 없음 — 재생만 가능) |
+
+Python 3 와 같은 네트워크의 Cast 기기만 있으면 됩니다. `catt` 경로는 메뉴의
+`⚙️ 설정 → catt 경로 자동 찾기` 가 OS 에 맞게 자동으로 잡아줍니다.
 
 ## 설치
 
@@ -10,8 +21,8 @@ pip install catt          # 필수 (캐스팅 엔진)
 pip install rich          # 선택 (컬러 UI)
 pip install questionary   # 선택 (화살표 ↑↓ 메뉴)
 ```
-> 최신 라즈베리파이OS(Bookworm)에서 `externally-managed-environment` 오류가 나면
-> `pip install --break-system-packages catt rich questionary` 로 설치하세요.
+> 데비안 계열(우분투 · 라즈베리파이OS Bookworm 등)에서 `externally-managed-environment`
+> 오류가 나면 `pip install --break-system-packages catt rich questionary` 로 설치하세요.
 
 ## 실행
 

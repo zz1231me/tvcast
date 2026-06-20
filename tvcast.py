@@ -427,7 +427,7 @@ def get_crontab():
 def set_crontab(lines):
     """crontab 을 주어진 라인들로 교체"""
     if not has_crontab():
-        error("이 시스템에 'crontab' 명령이 없습니다. (라즈베리파이OS 기본 포함)")
+        error("이 시스템에 'crontab' 명령이 없습니다. (리눅스/macOS 기본 포함, Windows 는 미지원)")
         return False
     content = "\n".join(lines).strip() + "\n"
     proc = subprocess.run(["crontab", "-"], input=content, text=True)
@@ -506,7 +506,7 @@ def sync_cron(cfg, verbose=True):
     """
     if not has_crontab():
         if verbose:
-            error("이 시스템에 'crontab' 명령이 없습니다. (라즈베리파이OS 기본 포함)")
+            error("이 시스템에 'crontab' 명령이 없습니다. (리눅스/macOS 기본 포함, Windows 는 미지원)")
         return None
 
     schedules = cfg.get("schedules", [])
