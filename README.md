@@ -24,7 +24,7 @@ pip install questionary   # 선택 (화살표 ↑↓ 메뉴)
 > 데비안 계열(우분투 · 라즈베리파이OS Bookworm 등)에서 `externally-managed-environment`
 > 오류가 나면 `pip install --break-system-packages catt rich questionary` 로 설치하세요.
 
-## 실행
+## 실행 — ① 터미널 메뉴
 
 ```bash
 python3 tvcast.py
@@ -45,6 +45,44 @@ python3 tvcast.py
 
 **핵심:** 자동 예약을 **켜거나 끄면 그 즉시 cron 에 반영**됩니다. 따로 "등록" 단계가 없습니다.
 메뉴에서 바꾼 내용은 모두 `config.json` 에 **바로 저장**됩니다.
+
+## 실행 — ② 웹 리모컨 (폰/PC 브라우저)
+
+같은 WiFi 의 폰·PC 브라우저에서 버튼으로 제어합니다. 터미널 메뉴와 **같은 `config.json` 을 공유**해서,
+웹에서 바꾼 영상·예약·볼륨이 cron 과 CLI 에도 그대로 반영됩니다.
+
+```bash
+pip install flask
+python3 tvcast_web.py            # 기본 포트 8888
+# 폰 브라우저에서  http://<이 기기 IP>:8888  접속
+#   (이 기기 IP 확인:  hostname -I)
+```
+
+- 즐겨찾기 영상 탭 → 즉시 재생 / 정지 / 상태
+- 볼륨 슬라이더 (드래그하면 기본 볼륨 저장 + 재생 중이면 바로 적용)
+- 자동 예약 추가·켜기/끄기·삭제 (→ cron 자동 반영)
+- 기기 검색·선택, catt 경로 자동 찾기
+
+> ⚠️ 기본적으로 **인증이 없습니다** — 같은 네트워크의 누구나 제어할 수 있어요. 집 내부망 용도로만 쓰세요.
+
+**항상 켜두기 (systemd, 리눅스):** `/etc/systemd/system/tvcast-web.service`
+```ini
+[Unit]
+Description=TV Cast Web
+After=network-online.target
+
+[Service]
+User=pi
+WorkingDirectory=/home/pi/tvcast
+ExecStart=/usr/bin/python3 /home/pi/tvcast/tvcast_web.py
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+```
+```bash
+sudo systemctl enable --now tvcast-web      # 부팅 시 자동 실행
+```
 
 ## config.json 구조
 
