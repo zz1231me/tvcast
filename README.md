@@ -58,8 +58,10 @@ python3 tvcast.py web            # 또는  python3 tvcast_web.py
 #   (이 기기 IP 확인:  hostname -I)
 ```
 
-**포트 변경**은 `config.json` 의 `settings.web_port` 를 바꾸면 됩니다 (기본 8888).
-일시적으로는 `TVCAST_PORT=9000 python3 tvcast.py web` 처럼 환경변수로도 가능 (환경변수가 우선).
+터미널 메뉴에서도 **`🌐 웹 리모컨 켜기`** 를 고르면 바로 실행됩니다 (Ctrl-C 로 종료 → 메뉴 복귀).
+
+**포트 변경**: 메뉴의 `⚙️ 설정 → 🌐 웹 포트 변경`, 또는 `config.json` 의 `settings.web_port` (기본 8888).
+일시적으로는 `TVCAST_PORT=9000 python3 tvcast.py web` 환경변수도 가능 (환경변수가 우선).
 
 - 즐겨찾기 영상 탭 → 즉시 재생 / 정지 / 상태
 - 볼륨 슬라이더 (드래그하면 기본 볼륨 저장 + 재생 중이면 바로 적용)

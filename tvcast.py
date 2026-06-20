@@ -725,18 +725,37 @@ def set_default_volume(cfg):
         success(f"🔊 기본 볼륨을 {vol} 로 저장했습니다. (재생할 때마다 적용)")
 
 
+def set_web_port(cfg):
+    """웹 리모컨 포트(settings.web_port)를 설정"""
+    cur = get_setting(cfg, "web_port", 8888)
+    info(f"현재 웹 포트: {cur}")
+    raw = ask_text("웹 포트 (1~65535, 기본 8888)")
+    if raw in ("", "q"):
+        warn("취소했습니다.")
+        return
+    if not raw.isdigit() or not (1 <= int(raw) <= 65535):
+        error("1~65535 사이 숫자를 입력하세요.")
+        return
+    cfg.setdefault("settings", {})["web_port"] = int(raw)
+    if save_config(cfg):
+        success(f"🌐 웹 포트를 {raw} 로 저장했습니다. (다음 웹 실행부터 적용)")
+
+
 def manage_settings(cfg):
-    """설정 서브메뉴 — 기기 선택 · catt 경로 · 기본 볼륨 · 고급(cron 확인)"""
+    """설정 서브메뉴 — 기기 · 볼륨 · 웹 포트 · catt 경로 · 고급(cron 확인)"""
     while True:
         clear_screen()
         dev = get_device(cfg)
         catt = get_setting(cfg, "catt_path", "") or "(미설정)"
         vol = get_setting(cfg, "volume", None)
         vol_txt = vol if vol is not None else "설정 안 함"
-        info(f"기기: {dev}    |    기본 볼륨: {vol_txt}    |    catt: {catt}")
+        port = get_setting(cfg, "web_port", 8888)
+        info(f"기기: {dev}  |  기본 볼륨: {vol_txt}  |  웹 포트: {port}")
+        info(f"catt: {catt}")
         action = select_menu("⚙️  설정", [
             ("🔎 Cast 기기 검색 & 선택", "device"),
             ("🔊 기본 볼륨 설정", "volume"),
+            ("🌐 웹 포트 변경", "webport"),
             ("📁 catt 경로 자동 찾기 (cron 안전)", "catt"),
             ("📜 실제 적용된 cron 보기 (고급)", "showcron"),
             ("↩  뒤로", "back"),
@@ -747,6 +766,9 @@ def manage_settings(cfg):
         elif action == "volume":
             set_default_volume(cfg)
             pause()
+        elif action == "webport":
+            set_web_port(cfg)
+            pause()
         elif action == "catt":
             set_catt_path(cfg)
             pause()
@@ -755,6 +777,26 @@ def manage_settings(cfg):
             pause()
         else:  # back / None
             return
+
+
+def launch_web(cfg):
+    """메뉴에서 웹 리모컨 서버를 띄운다 (Ctrl-C 로 종료하면 메뉴로 복귀)"""
+    try:
+        import flask  # noqa: F401  (있는지만 확인 — 없으면 메뉴를 죽이지 않고 안내)
+    except ImportError:
+        error("웹 실행에는 flask 가 필요합니다.  pip install flask")
+        warn("   (데비안/우분투: pip install --break-system-packages flask)")
+        return
+    clear_screen()
+    info("🌐 웹 리모컨을 시작합니다. 종료하려면 Ctrl-C 를 누르세요.\n")
+    try:
+        import tvcast_web
+        tvcast_web.run()
+    except KeyboardInterrupt:
+        pass
+    except OSError as e:
+        error(f"웹 서버 실행 실패: {e}  (포트가 이미 사용 중일 수 있어요)")
+    info("웹 서버를 종료했습니다. 메뉴로 돌아갑니다.")
 
 
 # ====================================================================
@@ -1021,7 +1063,8 @@ def build_main_menu(cfg):
         ("──────────", None),
         ("⏰ 자동 예약 (스케줄)", "schedules"),
         ("🎬 영상 목록 관리", "videos"),
-        ("⚙️  설정 (기기·catt 경로)", "settings"),
+        ("🌐 웹 리모컨 켜기 (폰에서 제어)", "web"),
+        ("⚙️  설정 (기기·볼륨·웹 포트)", "settings"),
         ("──────────", None),
         ("🚪 종료", "quit"),
     ]
@@ -1065,6 +1108,9 @@ def interactive():
             manage_schedules(cfg)
         elif choice == "videos":
             manage_videos(cfg)
+        elif choice == "web":
+            launch_web(cfg)
+            pause()
         elif choice == "settings":
             manage_settings(cfg)
 
