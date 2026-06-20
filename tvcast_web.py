@@ -352,6 +352,8 @@ INDEX_HTML = r"""<!DOCTYPE html>
          background:#000;color:#fff;padding:10px 16px;border-radius:20px;font-size:13px;
          opacity:0;transition:opacity .2s;pointer-events:none;z-index:9}
   #toast.show{opacity:.92}
+  #busy{position:fixed;inset:0;background:rgba(8,10,14,.62);z-index:20;
+        display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px}
   details{margin:12px 0}
   summary{cursor:pointer;color:var(--mut);font-size:13px;padding:6px 0;list-style:none}
   summary::-webkit-details-marker{display:none}
@@ -370,7 +372,7 @@ INDEX_HTML = r"""<!DOCTYPE html>
   </div>
 
   <div class="card">
-    <p class="lbl">재생</p>
+    <p class="lbl">재생 — 탭하면 바로 (⭐ 즐겨찾기가 위로)</p>
     <div id="favs"></div>
     <div class="grid2" style="margin-top:8px">
       <button class="center danger" id="btn-stop"><span class="ico">■</span>정지</button>
@@ -428,11 +430,13 @@ INDEX_HTML = r"""<!DOCTYPE html>
 </div>
 
 <div id="toast"></div>
+<div id="busy" class="hide">⏳ 처리 중…</div>
 
 <script>
 const $=s=>document.querySelector(s);
 let S={};
 function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(t._);t._=setTimeout(()=>t.classList.remove('show'),1600);}
+function busy(on,msg){const b=$('#busy');if(msg)b.textContent=msg;b.classList.toggle('hide',!on);}
 function h(tag,opts,kids){const e=document.createElement(tag);opts=opts||{};
   if(opts.cls)e.className=opts.cls;
   if(opts.text!=null)e.textContent=opts.text;
@@ -453,9 +457,8 @@ function render(){
   $('#volval').textContent=S.volume==null?'설정 안 함':S.volume;
   $('#cattp').textContent='catt: '+(S.catt_path||'(미설정)');
 
-  const favs=S.videos.filter(v=>v.fav), list=(favs.length?favs:S.videos).slice(0,6);
-  $('#favs').replaceChildren(...(list.length
-    ? list.map(v=>h('button',{attr:{style:'margin-bottom:8px'},on:{click:()=>play(v.key)}},[ico(v.fav?'⭐':'▶'),v.name]))
+  $('#favs').replaceChildren(...(S.videos.length
+    ? S.videos.map(v=>h('button',{attr:{style:'margin-bottom:8px'},on:{click:()=>play(v.key)}},[ico(v.fav?'⭐':'▶'),v.name]))
     : [h('div',{cls:'mut',text:'영상이 없습니다. 아래에서 추가하세요.'})]));
 
   $('#s_video').replaceChildren(...S.videos.map(v=>h('option',{text:v.name,attr:{value:v.key}})));
@@ -484,9 +487,11 @@ function render(){
     : [h('div',{cls:'mut',text:'없음'})]));
 }
 
-async function play(k){toast('▶ 재생 중…');await api('/api/play','POST',{video:k});toast('▶ 재생 시작');}
+async function play(k){busy(true,'▶ 재생 준비 중… (몇 초 걸립니다)');
+  try{await api('/api/play','POST',{video:k});toast('▶ 재생 시작');}finally{busy(false);}}
 async function setVol(v){await api('/api/volume','POST',{value:v});load();toast(v===''?'볼륨 해제':'🔊 볼륨 '+v);}
-async function showStatus(){const j=await api('/api/status');const b=$('#statusbox');b.textContent=j.text;b.classList.remove('hide');}
+async function showStatus(){busy(true,'ℹ 상태 확인 중…');
+  try{const j=await api('/api/status');const b=$('#statusbox');b.textContent=j.text;b.classList.remove('hide');}finally{busy(false);}}
 async function addVideo(){await api('/api/videos','POST',{name:$('#v_name').value,url:$('#v_url').value,fav:$('#v_fav').checked});
   $('#v_name').value='';$('#v_url').value='';$('#v_fav').checked=false;load();toast('✅ 영상 추가');}
 async function delVideo(k){if(!confirm('이 영상을 삭제할까요?'))return;await api('/api/videos/'+k,'DELETE');load();toast('🗑 삭제');}
@@ -507,14 +512,17 @@ async function submitSched(){
   editIdx=null;schedBtnLabel();['s_name','s_start','s_end','s_days','s_vol'].forEach(i=>$('#'+i).value='');load();}
 async function toggleSched(i){await api('/api/schedules/'+i+'/toggle','POST');load();}
 async function delSched(i){if(!confirm('이 예약을 삭제할까요?'))return;await api('/api/schedules/'+i,'DELETE');load();toast('🗑 삭제');}
-async function scan(){toast('🔎 검색 중…');const j=await api('/api/scan','POST');const ds=j.devices||[];
-  $('#devlist').replaceChildren(...(ds.length
-    ? ds.map(d=>h('button',{cls:'ghost',attr:{style:'margin-top:8px'},on:{click:()=>pickDev(d.name,d.ip)},text:d.name+' ['+d.ip+']'}))
-    : [h('div',{cls:'mut',attr:{style:'margin-top:8px'},text:'기기를 못 찾았습니다.'})]));}
+async function scan(){busy(true,'🔎 기기 검색 중… (몇 초 걸립니다)');
+  try{const j=await api('/api/scan','POST');const ds=j.devices||[];
+    $('#devlist').replaceChildren(...(ds.length
+      ? ds.map(d=>h('button',{cls:'ghost',attr:{style:'margin-top:8px'},on:{click:()=>pickDev(d.name,d.ip)},text:d.name+' ['+d.ip+']'}))
+      : [h('div',{cls:'mut',attr:{style:'margin-top:8px'},text:'기기를 못 찾았습니다.'})]));}
+  finally{busy(false);}}
 async function pickDev(name,ip){await api('/api/device','POST',{name,ip});load();toast('✅ 기기: '+name);}
 async function detectCatt(){const j=await api('/api/detect-catt','POST');load();toast('✅ '+j.path);}
 
-$('#btn-stop').addEventListener('click',()=>api('/api/stop','POST').then(()=>toast('■ 정지')));
+$('#btn-stop').addEventListener('click',async()=>{busy(true,'■ 정지 중…');
+  try{await api('/api/stop','POST');toast('■ 정지');}finally{busy(false);}});
 $('#btn-status').addEventListener('click',showStatus);
 $('#btn-volclear').addEventListener('click',()=>setVol(''));
 $('#vol').addEventListener('input',function(){$('#volval').textContent=this.value;});
