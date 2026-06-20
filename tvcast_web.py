@@ -206,6 +206,39 @@ def api_toggle_sched(idx):
     return jsonify(ok=True, enabled=s[idx]["enabled"])
 
 
+@app.put("/api/schedules/<int:idx>")
+def api_edit_sched(idx):
+    d = body()
+    cfg = load()
+    s = cfg.get("schedules", [])
+    if not (0 <= idx < len(s)):
+        return jsonify(ok=False, error="없는 예약"), 404
+    sc = s[idx]
+    vid = str(d.get("video", sc.get("video", "")))
+    if vid not in cfg.get("videos", {}):
+        return jsonify(ok=False, error="영상을 골라주세요."), 400
+    start = str(d.get("start", "")).strip()
+    if tv.time_to_cron(start) is None:
+        return jsonify(ok=False, error="켜는 시간 형식이 잘못됨 (HH:MM)"), 400
+    end = str(d.get("end", "")).strip()
+    if end and tv.time_to_cron(end) is None:
+        return jsonify(ok=False, error="끄는 시간 형식이 잘못됨 (HH:MM)"), 400
+    days = d.get("days") or ["매일"]
+    if isinstance(days, str):
+        days = [x.strip() for x in days.split(",") if x.strip()] or ["매일"]
+    raw = d.get("volume")
+    vol = tv.parse_volume(raw) if raw not in (None, "") else None
+    sc["name"] = str(d.get("name", "")).strip() or sc.get("name", "예약")
+    sc["video"], sc["start"], sc["end"], sc["days"] = vid, start, end, days
+    if vol is not None:
+        sc["volume"] = vol
+    else:
+        sc.pop("volume", None)  # 비우면 기본 볼륨 사용
+    tv.save_config(cfg)
+    tv.sync_cron(cfg, verbose=False)
+    return jsonify(ok=True)
+
+
 @app.delete("/api/schedules/<int:idx>")
 def api_del_sched(idx):
     cfg = load()
@@ -341,8 +374,8 @@ INDEX_HTML = r"""<!DOCTYPE html>
   <div class="card">
     <div class="row between"><p class="lbl" style="margin:0">자동 예약</p><span class="mut" id="schn"></span></div>
     <div id="scheds"></div>
-    <details>
-      <summary>＋ 예약 추가</summary>
+    <details id="sched-details">
+      <summary>＋ 예약 추가 / 수정</summary>
       <div class="field"><input id="s_name" placeholder="이름 (예: 아침 뉴스)"></div>
       <div class="field"><select id="s_video"></select></div>
       <div class="grid2">
@@ -363,6 +396,8 @@ INDEX_HTML = r"""<!DOCTYPE html>
     <div class="card">
       <div class="field"><input id="v_name" placeholder="영상 이름"></div>
       <div class="field"><input id="v_url" placeholder="YouTube URL"></div>
+      <label class="row" style="margin:4px 2px 10px;font-size:14px;color:var(--mut)">
+        <input type="checkbox" id="v_fav" style="width:auto;margin-right:6px"> ⭐ 즐겨찾기로 추가</label>
       <button class="accent center" id="btn-addvideo"><span class="ico">＋</span>영상 추가</button>
     </div>
   </details>
@@ -419,7 +454,9 @@ function render(){
         const sw=h('div',{cls:'sw '+(s.enabled?'on':''),on:{click:()=>toggleSched(s.idx)}},[h('i')]);
         return h('div',{cls:'vrow'},[
           h('div',{},[h('div',{text:s.name}),h('div',{cls:'mut',text:meta})]),
-          h('div',{cls:'row'},[sw,h('button',{cls:'x',text:'🗑',on:{click:()=>delSched(s.idx)}})])]);
+          h('div',{cls:'row'},[sw,
+            h('button',{cls:'x',text:'✏',on:{click:()=>editSched(s)}}),
+            h('button',{cls:'x',text:'🗑',on:{click:()=>delSched(s.idx)}})])]);
       })
     : [h('div',{cls:'mut',text:'예약이 없습니다.'})]));
 
@@ -428,6 +465,7 @@ function render(){
         h('div',{},[h('div',{text:(v.fav?'⭐ ':'')+v.name}),h('div',{cls:'mut',text:v.url})]),
         h('div',{cls:'row'},[
           h('button',{cls:'x',text:v.fav?'☆':'⭐',on:{click:()=>toggleFav(v.key,v.fav)}}),
+          h('button',{cls:'x',text:'✏',on:{click:()=>renameVideo(v.key,v.name)}}),
           h('button',{cls:'x',text:'🗑',on:{click:()=>delVideo(v.key)}})])]))
     : [h('div',{cls:'mut',text:'없음'})]));
 }
@@ -435,13 +473,24 @@ function render(){
 async function play(k){toast('▶ 재생 중…');await api('/api/play','POST',{video:k});toast('▶ 재생 시작');}
 async function setVol(v){await api('/api/volume','POST',{value:v});load();toast(v===''?'볼륨 해제':'🔊 볼륨 '+v);}
 async function showStatus(){const j=await api('/api/status');const b=$('#statusbox');b.textContent=j.text;b.classList.remove('hide');}
-async function addVideo(){await api('/api/videos','POST',{name:$('#v_name').value,url:$('#v_url').value});
-  $('#v_name').value='';$('#v_url').value='';load();toast('✅ 영상 추가');}
+async function addVideo(){await api('/api/videos','POST',{name:$('#v_name').value,url:$('#v_url').value,fav:$('#v_fav').checked});
+  $('#v_name').value='';$('#v_url').value='';$('#v_fav').checked=false;load();toast('✅ 영상 추가');}
 async function delVideo(k){if(!confirm('이 영상을 삭제할까요?'))return;await api('/api/videos/'+k,'DELETE');load();toast('🗑 삭제');}
 async function toggleFav(k,f){await api('/api/videos/'+k,'PUT',{fav:!f});load();}
-async function addSched(){await api('/api/schedules','POST',{name:$('#s_name').value,video:$('#s_video').value,
-  start:$('#s_start').value,end:$('#s_end').value,days:$('#s_days').value,volume:$('#s_vol').value});
-  ['s_name','s_start','s_end','s_days','s_vol'].forEach(i=>$('#'+i).value='');load();toast('✅ 예약 추가 (cron 반영)');}
+async function renameVideo(k,cur){const n=prompt('새 이름',cur);if(n==null)return;await api('/api/videos/'+k,'PUT',{name:n});load();toast('✏ 이름 변경');}
+
+let editIdx=null;
+function schedBtnLabel(){$('#btn-addsched').lastChild.textContent=editIdx==null?'예약 추가':'수정 저장';}
+function editSched(s){editIdx=s.idx;
+  $('#s_name').value=s.name||'';$('#s_video').value=s.video;$('#s_start').value=s.start||'';
+  $('#s_end').value=s.end||'';$('#s_days').value=(s.days||[]).join(',');$('#s_vol').value=s.volume==null?'':s.volume;
+  $('#sched-details').open=true;schedBtnLabel();$('#s_name').scrollIntoView({block:'center'});toast('✏ 예약 수정 중…');}
+async function submitSched(){
+  const p={name:$('#s_name').value,video:$('#s_video').value,start:$('#s_start').value,
+    end:$('#s_end').value,days:$('#s_days').value,volume:$('#s_vol').value};
+  if(editIdx==null){await api('/api/schedules','POST',p);toast('✅ 예약 추가 (cron 반영)');}
+  else{await api('/api/schedules/'+editIdx,'PUT',p);toast('✅ 예약 수정 (cron 반영)');}
+  editIdx=null;schedBtnLabel();['s_name','s_start','s_end','s_days','s_vol'].forEach(i=>$('#'+i).value='');load();}
 async function toggleSched(i){await api('/api/schedules/'+i+'/toggle','POST');load();}
 async function delSched(i){if(!confirm('이 예약을 삭제할까요?'))return;await api('/api/schedules/'+i,'DELETE');load();toast('🗑 삭제');}
 async function scan(){toast('🔎 검색 중…');const j=await api('/api/scan','POST');const ds=j.devices||[];
@@ -456,7 +505,7 @@ $('#btn-status').addEventListener('click',showStatus);
 $('#btn-volclear').addEventListener('click',()=>setVol(''));
 $('#vol').addEventListener('input',function(){$('#volval').textContent=this.value;});
 $('#vol').addEventListener('change',function(){setVol(this.value);});
-$('#btn-addsched').addEventListener('click',addSched);
+$('#btn-addsched').addEventListener('click',submitSched);
 $('#btn-addvideo').addEventListener('click',addVideo);
 $('#btn-scan').addEventListener('click',scan);
 $('#btn-catt').addEventListener('click',detectCatt);
