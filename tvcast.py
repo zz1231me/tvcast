@@ -151,12 +151,17 @@ def ask_confirm(prompt, default=False):
     return r in ("y", "yes")
 
 
-def ask_text(prompt):
-    """자유 입력. 화살표 모드면 questionary.text, 아니면 일반 input. 취소 시 빈 문자열."""
+def ask_text(prompt, default=""):
+    """
+    자유 입력. 화살표 모드면 questionary.text(현재값을 기본으로 채움), 아니면 일반 input.
+    빈 입력이면 default 를 그대로 반환 → '수정 시 기존값 유지'에 사용. 취소 시 빈 문자열.
+    """
     if _arrows_ok():
-        r = questionary.text(prompt, qmark="✏").ask()
+        r = questionary.text(prompt, default=default, qmark="✏").ask()
         return (r or "").strip()
-    return ask(f"[bold]{prompt} > [/]")
+    shown = f" [{default}]" if default else ""
+    r = ask(f"[bold]{prompt}{shown} > [/]")
+    return default if r == "" else r
 
 
 def parse_volume(raw):
@@ -310,13 +315,13 @@ def play_video(cfg, key, volume=None):
     videos = cfg.get("videos", {})
     if key not in videos:
         error(f"'{key}' 번 영상이 config.json 에 없습니다.")
-        return
+        return False
     video = videos[key]
     url = video.get("url")
     if not url:
         error(f"'{key}' 번 영상에 url 이 없습니다.")
         log_event(cfg, f"PLAY FAIL 영상={key} (url 없음)")
-        return
+        return False
     device = get_device(cfg)
     wait = get_setting(cfg, "pre_stop_wait", 3)
     timeout = get_setting(cfg, "command_timeout", 60)
@@ -342,6 +347,7 @@ def play_video(cfg, key, volume=None):
         log_event(cfg, f"PLAY ok   기기={device} 영상={key}:{vname} 볼륨={vol}")
     else:
         log_event(cfg, f"PLAY FAIL 기기={device} 영상={key}:{vname}")
+    return ok
 
 
 def stop_video(cfg):
@@ -350,6 +356,7 @@ def stop_video(cfg):
     info(f"■  '{device}' 재생 종료")
     ok, _ = run_catt(cfg, ["stop"], timeout=timeout)
     log_event(cfg, f"STOP {'ok' if ok else 'FAIL'} 기기={device}")
+    return ok
 
 
 def show_status(cfg):
@@ -972,73 +979,127 @@ def add_schedule(cfg):
         report_cron(cfg)  # 켜진 상태로 추가되므로 바로 cron 에 반영
 
 
-def delete_schedule(cfg):
-    """스케줄을 골라 삭제"""
+def edit_schedule(cfg, idx):
+    """선택한 예약을 현재값이 채워진 상태로 수정 (빈칸은 기존값 유지). cron 즉시 반영."""
     schedules = cfg.get("schedules", [])
-    if not schedules:
-        warn("등록된 스케줄이 없습니다.")
+    if not (0 <= idx < len(schedules)):
         return
-    options = []
-    for i, s in enumerate(schedules):
-        mark = "✅" if s.get("enabled") else "⬜"
-        label = f"{mark} {s.get('name', '')}  ({s.get('start', '')}~{s.get('end', '') or '끔없음'})"
-        options.append((label, i))
-    options.append(("↩  취소", "__cancel__"))
-    idx = select_menu("삭제할 스케줄 선택", options)
-    if idx is None or idx == "__cancel__":
-        warn("취소했습니다.")
-        return
-    removed = schedules.pop(idx)
-    if save_config(cfg):
-        success(f"🗑  예약 '{removed.get('name', '')}' 삭제됨")
-        report_cron(cfg)  # 삭제 즉시 cron 에서도 제거
+    s = schedules[idx]
 
+    # 영상 — 그대로 둘지, 바꿀지 먼저 묻는다 (현재 영상을 보여줌)
+    cur_vid = str(s.get("video", ""))
+    cur_vname = cfg.get("videos", {}).get(cur_vid, {}).get("name", cur_vid)
+    info(f"현재 영상: {cur_vid}.{cur_vname}")
+    if ask_confirm("영상을 바꿀까요?", default=False):
+        picked = pick_video(cfg, "새 영상 선택")
+        if picked:
+            cur_vid = picked
 
-def toggle_schedule(cfg):
-    """예약을 골라 켜기/끄기 → 즉시 cron 에 반영"""
-    schedules = cfg.get("schedules", [])
-    if not schedules:
-        warn("등록된 예약이 없습니다. 먼저 '새 예약 추가' 를 하세요.")
+    name = ask_text("스케줄 이름", default=s.get("name", "")) or s.get("name", "")
+
+    start = ask_text("켜는 시간 HH:MM", default=str(s.get("start", ""))).strip()
+    if time_to_cron(start) is None:
+        error("시간 형식이 잘못되었습니다. (예: 07:15) — 수정을 취소합니다.")
         return
-    options = []
-    for i, s in enumerate(schedules):
-        mark = "✅ 켜짐" if s.get("enabled") else "⬜ 꺼짐"
-        label = f"{mark}  {s.get('name', '')}  ({s.get('start', '')}~{s.get('end', '') or '끔없음'})"
-        options.append((label, i))
-    options.append(("↩  취소", "__cancel__"))
-    idx = select_menu("켜고 끌 예약 선택", options)
-    if idx is None or idx == "__cancel__":
+    end = ask_text("끄는 시간 HH:MM (자동종료 없으면 비우기)",
+                   default=str(s.get("end", ""))).strip()
+    if end and time_to_cron(end) is None:
+        error("끄는 시간 형식이 잘못되었습니다. — 수정을 취소합니다.")
         return
-    schedules[idx]["enabled"] = not schedules[idx].get("enabled", False)
-    state = "켜짐 ✅" if schedules[idx]["enabled"] else "꺼짐 ⬜"
+
+    days_raw = ask_text("요일 (평일/주말/매일 또는 월,수,금)",
+                        default=",".join(s.get("days", []))) or "매일"
+    days = [d.strip() for d in days_raw.split(",") if d.strip()]
+
+    cur_vol = s.get("volume")
+    vol_raw = ask_text("볼륨 0~100 (비우면 기본 볼륨 사용)",
+                       default=str(cur_vol) if cur_vol is not None else "")
+    vol = parse_volume(vol_raw) if vol_raw.strip() else None
+
+    s["name"], s["video"], s["start"], s["end"], s["days"] = name, cur_vid, start, end, days
+    if vol is not None:
+        s["volume"] = vol
+    else:
+        s.pop("volume", None)  # 비우면 기본 볼륨 사용
     if save_config(cfg):
-        success(f"'{schedules[idx].get('name', '')}' → {state}")
+        vname = cfg.get("videos", {}).get(cur_vid, {}).get("name", cur_vid)
+        vol_txt = f", 볼륨 {vol}" if vol is not None else ""
+        success(f"✅ 예약 '{name}' 수정됨  (영상 {cur_vid}.{vname}{vol_txt})")
         report_cron(cfg)
 
 
+def schedule_actions(cfg, idx):
+    """선택한 예약 하나에 대해 수정 · 켜기/끄기 · 삭제 (모두 cron 즉시 반영)"""
+    schedules = cfg.get("schedules", [])
+    if not (0 <= idx < len(schedules)):
+        return
+    s = schedules[idx]
+
+    clear_screen()
+    state = "켜짐 ✅" if s.get("enabled") else "꺼짐 ⬜"
+    vid = str(s.get("video", "?"))
+    vname = cfg.get("videos", {}).get(vid, {}).get("name", "?")
+    end = str(s.get("end", "")).strip() or "자동종료 없음"
+    days = ",".join(s.get("days", [])) or "매일"
+    vol = s.get("volume")
+    vol_txt = vol if vol is not None else "기본"
+    info(f"예약: {s.get('name', '')}   [{state}]")
+    say(f"   영상 {vid}.{vname}  ·  {s.get('start', '') or '-'} 켜기  →  {end}")
+    say(f"   요일 {days}  ·  볼륨 {vol_txt}")
+
+    toggle_label = "🔘 끄기" if s.get("enabled") else "🔘 켜기"
+    action = select_menu("이 예약으로", [
+        ("✏  수정", "edit"),
+        (toggle_label, "toggle"),
+        ("🗑  삭제", "del"),
+        ("↩  뒤로", "back"),
+    ])
+    if action == "edit":
+        edit_schedule(cfg, idx)
+        pause()
+    elif action == "toggle":
+        s["enabled"] = not s.get("enabled", False)
+        new_state = "켜짐 ✅" if s["enabled"] else "꺼짐 ⬜"
+        if save_config(cfg):
+            success(f"'{s.get('name', '')}' → {new_state}")
+            report_cron(cfg)
+        pause()
+    elif action == "del":
+        if ask_confirm(f"'{s.get('name', '')}' 예약을 정말 삭제할까요?", default=False):
+            removed = schedules.pop(idx)
+            if save_config(cfg):
+                success(f"🗑  예약 '{removed.get('name', '')}' 삭제됨")
+                report_cron(cfg)  # 삭제 즉시 cron 에서도 제거
+            pause()
+    # back / None → 그냥 목록으로 복귀
+
+
 def manage_schedules(cfg):
-    """자동 예약 서브메뉴 — 켜기/끄기/추가/삭제가 모두 cron 에 즉시 반영됨"""
+    """자동 예약 서브메뉴 — 예약을 고르면 수정·켜기/끄기·삭제 (모두 cron 즉시 반영)"""
     while True:
         clear_screen()
         show_schedules(cfg)
         n_on = sum(1 for s in cfg.get("schedules", []) if s.get("enabled"))
-        info(f"현재 {n_on}건 켜짐 — 켜고/끄고/추가/삭제하면 cron 에 바로 반영됩니다.")
-        action = select_menu("⏰ 자동 예약", [
-            ("➕ 새 예약 추가", "add"),
-            ("🔘 켜기 / 끄기", "toggle"),
-            ("🗑  예약 삭제", "del"),
-            ("↩  뒤로", "back"),
-        ])
-        if action == "add":
+        info(f"현재 {n_on}건 켜짐 — 추가·수정·켜기/끄기·삭제가 모두 cron 에 바로 반영됩니다.")
+
+        schedules = cfg.get("schedules", [])
+        options = [("➕ 새 예약 추가", "__add__")]
+        if schedules:
+            options.append(("──── 예약을 고르면 수정·켜기/끄기·삭제 ────", None))
+            for i, s in enumerate(schedules):
+                mark = "✅" if s.get("enabled") else "⬜"
+                label = (f"{mark} {s.get('name', '')}  "
+                         f"({s.get('start', '') or '-'}~{s.get('end', '') or '끔없음'})")
+                options.append((label, i))
+        options.append(("↩  뒤로", "__back__"))
+
+        choice = select_menu("⏰ 자동 예약", options)
+        if choice == "__add__":
             add_schedule(cfg)
             pause()
-        elif action == "toggle":
-            toggle_schedule(cfg)
-            pause()
-        elif action == "del":
-            delete_schedule(cfg)
-            pause()
-        else:  # back / None
+        elif isinstance(choice, int):
+            schedule_actions(cfg, choice)
+        else:  # __back__ / None(Ctrl-C)
             return
 
 

@@ -74,34 +74,38 @@ def device_ok(cfg):
 
 # ---------- 상태 / 재생 ----------
 
-@app.get("/api/state")
+@app.route("/api/state")
 def api_state():
     return jsonify(state_dict(load()))
 
 
-@app.post("/api/play")
+@app.route("/api/play", methods=["POST"])
 def api_play():
     d = body()
     cfg = load()
     if not device_ok(cfg):
         return jsonify(ok=False, error="먼저 ⚙️ 설정에서 기기를 선택하세요."), 400
     key = str(d.get("video", ""))
+    if key not in cfg.get("videos", {}):
+        return jsonify(ok=False, error="없는 영상입니다."), 404
     raw = d.get("volume")
     vol = tv.parse_volume(raw) if raw not in (None, "") else None
-    tv.play_video(cfg, key, vol)
+    if not tv.play_video(cfg, key, vol):
+        return jsonify(ok=False, error="재생 실패 — 기기 연결/네트워크/catt 경로를 확인하세요."), 502
     return jsonify(ok=True)
 
 
-@app.post("/api/stop")
+@app.route("/api/stop", methods=["POST"])
 def api_stop():
     cfg = load()
     if not device_ok(cfg):
         return jsonify(ok=False, error="먼저 기기를 선택하세요."), 400
-    tv.stop_video(cfg)
+    if not tv.stop_video(cfg):
+        return jsonify(ok=False, error="정지 실패 — 기기 연결을 확인하세요."), 502
     return jsonify(ok=True)
 
 
-@app.get("/api/status")
+@app.route("/api/status")
 def api_status():
     cfg = load()
     if not device_ok(cfg):
@@ -113,7 +117,7 @@ def api_status():
 
 # ---------- 볼륨 (기본 볼륨 저장 + 지금 바로 적용) ----------
 
-@app.post("/api/volume")
+@app.route("/api/volume", methods=["POST"])
 def api_volume():
     d = body()
     cfg = load()
@@ -133,7 +137,7 @@ def api_volume():
 
 # ---------- 영상 목록 ----------
 
-@app.post("/api/videos")
+@app.route("/api/videos", methods=["POST"])
 def api_add_video():
     d = body()
     name = str(d.get("name", "")).strip()
@@ -150,7 +154,7 @@ def api_add_video():
     return jsonify(ok=True, key=key)
 
 
-@app.put("/api/videos/<key>")
+@app.route("/api/videos/<key>", methods=["PUT"])
 def api_update_video(key):
     d = body()
     cfg = load()
@@ -168,7 +172,7 @@ def api_update_video(key):
     return jsonify(ok=True)
 
 
-@app.delete("/api/videos/<key>")
+@app.route("/api/videos/<key>", methods=["DELETE"])
 def api_del_video(key):
     cfg = load()
     if key in cfg.get("videos", {}):
@@ -179,7 +183,7 @@ def api_del_video(key):
 
 # ---------- 자동 예약 (변경 시 cron 자동 동기화) ----------
 
-@app.post("/api/schedules")
+@app.route("/api/schedules", methods=["POST"])
 def api_add_sched():
     d = body()
     cfg = load()
@@ -208,7 +212,7 @@ def api_add_sched():
     return jsonify(ok=True)
 
 
-@app.post("/api/schedules/<int:idx>/toggle")
+@app.route("/api/schedules/<int:idx>/toggle", methods=["POST"])
 def api_toggle_sched(idx):
     cfg = load()
     s = cfg.get("schedules", [])
@@ -220,7 +224,7 @@ def api_toggle_sched(idx):
     return jsonify(ok=True, enabled=s[idx]["enabled"])
 
 
-@app.put("/api/schedules/<int:idx>")
+@app.route("/api/schedules/<int:idx>", methods=["PUT"])
 def api_edit_sched(idx):
     d = body()
     cfg = load()
@@ -253,7 +257,7 @@ def api_edit_sched(idx):
     return jsonify(ok=True)
 
 
-@app.delete("/api/schedules/<int:idx>")
+@app.route("/api/schedules/<int:idx>", methods=["DELETE"])
 def api_del_sched(idx):
     cfg = load()
     s = cfg.get("schedules", [])
@@ -266,12 +270,12 @@ def api_del_sched(idx):
 
 # ---------- 기기 / 설정 ----------
 
-@app.post("/api/scan")
+@app.route("/api/scan", methods=["POST"])
 def api_scan():
     return jsonify(ok=True, devices=tv.scan_devices(load()))
 
 
-@app.post("/api/device")
+@app.route("/api/device", methods=["POST"])
 def api_device():
     d = body()
     cfg = load()
@@ -281,7 +285,7 @@ def api_device():
     return jsonify(ok=True)
 
 
-@app.post("/api/detect-catt")
+@app.route("/api/detect-catt", methods=["POST"])
 def api_detect_catt():
     cfg = load()
     found = tv.find_catt_path(cfg)
@@ -294,7 +298,7 @@ def api_detect_catt():
 
 # ---------- 페이지 ----------
 
-@app.get("/")
+@app.route("/")
 def index():
     return Response(INDEX_HTML, mimetype="text/html")
 
